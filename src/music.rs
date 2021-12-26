@@ -19,6 +19,36 @@ pub struct MusicList {
     pub songs: Vec<PathBuf>,
 }
 
+impl MusicList {
+    fn update(&mut self, filter: &MusicFilter) {
+        let dir_entries = match std::fs::read_dir(&filter.root_dir) {
+            Ok(dir_entries) => dir_entries,
+            _ => return,
+        };
+
+        self.songs.clear();
+
+        for entry in dir_entries {
+            let entry = entry.unwrap();
+            let path = entry.path();
+
+            if path.extension() != Some("mp3".as_ref()) {
+                continue;
+            }
+
+            let filename = path.strip_prefix(&filter.root_dir).unwrap();
+            if filter.query.trim() != "" &&
+                !filename.to_string_lossy().to_lowercase().contains(&filter.query.to_lowercase()) {
+                    continue;
+            }
+
+            self.songs.push(filename.to_owned());
+        }
+
+        self.songs.sort();
+    }
+}
+
 pub fn spawn_worker(
     filter_receiver: Receiver<MusicFilter>,
     list_sender: Sender<MusicList>
@@ -29,25 +59,10 @@ pub fn spawn_worker(
         while let Ok(filter) = filter_receiver.recv() {
             music_list.loading = true;
             list_sender.send(music_list.clone()).unwrap();
-            music_list.songs.clear();
 
-            for entry in std::fs::read_dir(&filter.root_dir).unwrap() {
-                let entry = entry.unwrap();
-                let path = entry.path();
+            music_list.update(&filter);
 
-                if path.extension() != Some("mp3".as_ref()) {
-                    continue;
-                }
-
-                let filename = path.strip_prefix(&filter.root_dir).unwrap();
-                if filter.query.trim() != "" &&
-                    !filename.to_string_lossy().to_lowercase().contains(&filter.query.to_lowercase()) {
-                        continue;
-                }
-
-                music_list.songs.push(filename.to_owned());
-            }
-
+            music_list.loading = false;
             list_sender.send(music_list.clone()).unwrap();
         }
     })

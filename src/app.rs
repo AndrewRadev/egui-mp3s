@@ -108,7 +108,9 @@ impl epi::App for Mp3sApp {
 
             ui.horizontal(|ui| {
                 ui.label("Music directory: ");
-                ui.text_edit_singleline(&mut self.filter.root_dir);
+                if ui.text_edit_singleline(&mut self.filter.root_dir).changed() {
+                    self.refresh_filter();
+                }
             });
 
             if ui.button("Refresh").clicked() {
