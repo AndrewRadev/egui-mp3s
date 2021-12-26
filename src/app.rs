@@ -1,23 +1,49 @@
 use std::path::PathBuf;
+use std::sync::mpsc;
 
 use eframe::{egui, epi};
 
+use crate::music::{MusicFilter, MusicList};
+
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "persistence", serde(default))] // if we add new fields, give them default values when deserializing old state
+#[cfg_attr(feature = "persistence", serde(default))]
 pub struct Mp3sApp {
-    music_root: String,
+    filter: MusicFilter,
+    list: MusicList,
+
     selected_path: Option<PathBuf>,
-    filter: String,
+
+    #[cfg_attr(feature = "persistence", serde(skip))]
+    filter_sender: Option<mpsc::Sender<MusicFilter>>,
+    #[cfg_attr(feature = "persistence", serde(skip))]
+    list_receiver: Option<mpsc::Receiver<MusicList>>,
 }
 
 impl Default for Mp3sApp {
     fn default() -> Self {
-        let music_root = ::dirs::audio_dir().
+        let root_dir = ::dirs::audio_dir().
             or_else(|| ::dirs::home_dir()).
             unwrap_or_else(|| ::std::env::current_dir().unwrap());
-        let music_root = format!("{}", music_root.display());
+        let root_dir = format!("{}", root_dir.display());
 
-        Self { music_root, selected_path: None::<PathBuf>, filter: String::new() }
+        let filter = MusicFilter { root_dir, filter: String::new() };
+        let list = MusicList { loading: true, songs: Vec::new() };
+
+        Self {
+            filter, list,
+            selected_path: None::<PathBuf>,
+            filter_sender: None, list_receiver: None,
+        }
+    }
+}
+
+impl Mp3sApp {
+    fn new(sender: mpsc::Sender<MusicFilter>, receiver: mpsc::Receiver<MusicList>) -> Self {
+        Self {
+            filter_sender: Some(sender),
+            list_receiver: Some(receiver),
+            .. Self::default()
+        }
     }
 }
 
@@ -34,7 +60,13 @@ impl epi::App for Mp3sApp {
     ) {
         #[cfg(feature = "persistence")]
         if let Some(storage) = _storage {
-            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
+            let filter_sender = self.filter_sender.take();
+            let list_receiver = self.list_receiver.take();
+
+            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default();
+
+            self.filter_sender = filter_sender;
+            self.list_receiver = list_receiver;
         }
     }
 
@@ -64,7 +96,7 @@ impl epi::App for Mp3sApp {
 
             ui.horizontal(|ui| {
                 ui.label("Music directory: ");
-                ui.text_edit_singleline(&mut self.music_root);
+                ui.text_edit_singleline(&mut self.filter.root_dir);
             });
 
             if ui.button("Refresh").clicked() {
@@ -72,7 +104,7 @@ impl epi::App for Mp3sApp {
             }
 
             if let Some(path) = &self.selected_path {
-                if let Ok(tag) = ::id3::Tag::read_from_path(PathBuf::from(&self.music_root).join(path)) {
+                if let Ok(tag) = ::id3::Tag::read_from_path(PathBuf::from(&self.filter.root_dir).join(path)) {
                     if let Some(artist) = tag.artist() {
                         ui.label(format!("Artist: {}", artist));
                     }
@@ -90,10 +122,10 @@ impl epi::App for Mp3sApp {
             ui.heading("List of mp3s");
 
             ui.label("Filter: ");
-            ui.text_edit_singleline(&mut self.filter);
+            ui.text_edit_singleline(&mut self.filter.filter);
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for entry in std::fs::read_dir(&self.music_root).unwrap() {
+                for entry in std::fs::read_dir(&self.filter.root_dir).unwrap() {
                     let entry = entry.unwrap();
                     let path = entry.path();
 
@@ -101,9 +133,9 @@ impl epi::App for Mp3sApp {
                         continue;
                     }
 
-                    let filename = path.strip_prefix(&self.music_root).unwrap();
-                    if self.filter.trim() != "" &&
-                        !filename.to_string_lossy().to_lowercase().contains(&self.filter.to_lowercase()) {
+                    let filename = path.strip_prefix(&self.filter.root_dir).unwrap();
+                    if self.filter.filter.trim() != "" &&
+                        !filename.to_string_lossy().to_lowercase().contains(&self.filter.filter.to_lowercase()) {
                         continue;
                     }
 

@@ -1,2 +1,2 @@
-mod app;
-pub use app::Mp3sApp;
+pub mod app;
+pub mod music;
