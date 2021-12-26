@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+
 use eframe::{egui, epi};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -80,6 +81,20 @@ impl epi::App for Mp3sApp {
 
             if ui.button("Refresh").clicked() {
                 println!("TODO: Refresh");
+            }
+
+            if let Some(path) = &self.selected_path {
+                if let Ok(tag) = ::id3::Tag::read_from_path(PathBuf::from(&self.music_root).join(path)) {
+                    if let Some(artist) = tag.artist() {
+                        ui.label(format!("Artist: {}", artist));
+                    }
+                    if let Some(title) = tag.title() {
+                        ui.label(format!("Title: {}", title));
+                    }
+                    if let Some(album) = tag.album() {
+                        ui.label(format!("Album: {}", album));
+                    }
+                }
             }
         });
 
