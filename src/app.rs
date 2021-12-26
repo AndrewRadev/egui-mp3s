@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use eframe::{egui, epi};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -5,6 +6,7 @@ use eframe::{egui, epi};
 #[cfg_attr(feature = "persistence", serde(default))] // if we add new fields, give them default values when deserializing old state
 pub struct Mp3sApp {
     music_root: String,
+    selected_path: Option<PathBuf>,
 }
 
 impl Default for Mp3sApp {
@@ -14,7 +16,7 @@ impl Default for Mp3sApp {
             unwrap_or_else(|| ::std::env::current_dir().unwrap());
         let music_root = format!("{}", music_root.display());
 
-        Self { music_root }
+        Self { music_root, selected_path: None::<PathBuf> }
     }
 }
 
@@ -48,8 +50,6 @@ impl epi::App for Mp3sApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
-        let Self { music_root } = self;
-
         // Examples of how to create different panels and windows.
         // Pick whichever suits you.
         // Tip: a good default choice is to just keep the `CentralPanel`.
@@ -75,7 +75,7 @@ impl epi::App for Mp3sApp {
 
             ui.horizontal(|ui| {
                 ui.label("Music directory: ");
-                ui.text_edit_singleline(music_root);
+                ui.text_edit_singleline(&mut self.music_root);
             });
 
             if ui.button("Refresh").clicked() {
@@ -84,9 +84,30 @@ impl epi::App for Mp3sApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-
             ui.heading("List of mp3s");
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for entry in std::fs::read_dir(&self.music_root).unwrap() {
+                    let entry = entry.unwrap();
+                    let path = entry.path();
+
+                    if entry.path().extension() == Some("mp3".as_ref()) {
+                        let filename = path.strip_prefix(&self.music_root).unwrap();
+                        let selected = Some(filename) == self.selected_path.as_ref().map(|p| p.as_path());
+
+                        if ui.selectable_label(selected, format!("{}", filename.display())).clicked() {
+                            if selected {
+                                self.selected_path = None;
+                            } else {
+                                self.selected_path = Some(filename.to_owned());
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
         });
 
