@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::mpsc::{Sender, Receiver};
 
 use eframe::{egui, epi};
 
@@ -14,9 +14,9 @@ pub struct Mp3sApp {
     selected_path: Option<PathBuf>,
 
     #[cfg_attr(feature = "persistence", serde(skip))]
-    filter_sender: Option<mpsc::Sender<MusicFilter>>,
+    filter_sender: Option<Sender<MusicFilter>>,
     #[cfg_attr(feature = "persistence", serde(skip))]
-    list_receiver: Option<mpsc::Receiver<MusicList>>,
+    list_receiver: Option<Receiver<MusicList>>,
 }
 
 impl Default for Mp3sApp {
@@ -26,7 +26,7 @@ impl Default for Mp3sApp {
             unwrap_or_else(|| ::std::env::current_dir().unwrap());
         let root_dir = format!("{}", root_dir.display());
 
-        let filter = MusicFilter { root_dir, filter: String::new() };
+        let filter = MusicFilter { root_dir, query: String::new() };
         let list = MusicList { loading: true, songs: Vec::new() };
 
         Self {
@@ -38,12 +38,16 @@ impl Default for Mp3sApp {
 }
 
 impl Mp3sApp {
-    fn new(sender: mpsc::Sender<MusicFilter>, receiver: mpsc::Receiver<MusicList>) -> Self {
+    pub fn new(sender: Sender<MusicFilter>, receiver: Receiver<MusicList>) -> Self {
         Self {
             filter_sender: Some(sender),
             list_receiver: Some(receiver),
             .. Self::default()
         }
+    }
+
+    pub fn refresh_filter(&self) {
+        self.filter_sender.as_ref().map(|s| s.send(self.filter.clone()));
     }
 }
 
@@ -68,6 +72,8 @@ impl epi::App for Mp3sApp {
             self.filter_sender = filter_sender;
             self.list_receiver = list_receiver;
         }
+
+        self.refresh_filter();
     }
 
     #[cfg(feature = "persistence")]
@@ -76,6 +82,12 @@ impl epi::App for Mp3sApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+        if let Some(receiver) = &self.list_receiver {
+            if let Ok(new_music_list) = receiver.try_recv() {
+                self.list = new_music_list;
+            }
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
@@ -85,7 +97,7 @@ impl epi::App for Mp3sApp {
                     }
 
                     if ui.button("Refresh").clicked() {
-                        println!("TODO: Refresh");
+                        self.refresh_filter();
                     }
                 });
             });
@@ -100,7 +112,7 @@ impl epi::App for Mp3sApp {
             });
 
             if ui.button("Refresh").clicked() {
-                println!("TODO: Refresh");
+                self.refresh_filter();
             }
 
             if let Some(path) = &self.selected_path {
@@ -122,24 +134,13 @@ impl epi::App for Mp3sApp {
             ui.heading("List of mp3s");
 
             ui.label("Filter: ");
-            ui.text_edit_singleline(&mut self.filter.filter);
+            if ui.text_edit_singleline(&mut self.filter.query).changed() {
+                self.refresh_filter();
+            }
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for entry in std::fs::read_dir(&self.filter.root_dir).unwrap() {
-                    let entry = entry.unwrap();
-                    let path = entry.path();
-
-                    if path.extension() != Some("mp3".as_ref()) {
-                        continue;
-                    }
-
-                    let filename = path.strip_prefix(&self.filter.root_dir).unwrap();
-                    if self.filter.filter.trim() != "" &&
-                        !filename.to_string_lossy().to_lowercase().contains(&self.filter.filter.to_lowercase()) {
-                        continue;
-                    }
-
-                    let selected = Some(filename) == self.selected_path.as_ref().map(|p| p.as_path());
+                for filename in &self.list.songs {
+                    let selected = Some(filename) == self.selected_path.as_ref();
 
                     if ui.selectable_label(selected, format!("{}", filename.display())).clicked() {
                         if selected {
