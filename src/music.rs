@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
 use std::thread;
 
+use walkdir::WalkDir;
+
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))]
 #[derive(Clone, Default)]
@@ -21,14 +23,14 @@ pub struct MusicList {
 
 impl MusicList {
     pub fn update(&mut self, filter: &MusicFilter) {
-        let dir_entries = match std::fs::read_dir(&filter.root_dir) {
-            Ok(dir_entries) => dir_entries,
-            _ => return,
-        };
+        if !PathBuf::from(&filter.root_dir).is_dir() {
+            // Not a real directory, don't change the list
+            return;
+        }
 
         self.songs.clear();
 
-        for entry in dir_entries {
+        for entry in WalkDir::new(&filter.root_dir) {
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(e) => {

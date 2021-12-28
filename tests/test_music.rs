@@ -29,3 +29,20 @@ fn test_listing_songs() {
     list.update(&filter);
     assert_eq!(list.songs, [PathBuf::from("b.mp3")]);
 }
+
+#[test]
+fn test_listing_nested_songs() {
+    let mut list = MusicList::default();
+    let mut filter = MusicFilter {
+        root_dir: format!("{}", test_path("dir2").display()),
+        query: String::new(),
+    };
+
+    list.update(&filter);
+    assert_eq!(list.songs, [PathBuf::from("a.mp3"), PathBuf::from("b.mp3"), PathBuf::from("nested/b.mp3")]);
+
+    filter.query = String::from("b");
+
+    list.update(&filter);
+    assert_eq!(list.songs, [PathBuf::from("b.mp3"), PathBuf::from("nested/b.mp3")]);
+}

@@ -538,6 +538,7 @@ dependencies = [
  "eframe",
  "id3",
  "serde",
+ "walkdir",
 ]
 
 [[package]]
