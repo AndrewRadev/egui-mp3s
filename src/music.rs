@@ -29,14 +29,31 @@ impl MusicList {
         self.songs.clear();
 
         for entry in dir_entries {
-            let entry = entry.unwrap();
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    eprintln!("[Warning] Couldn't read dir entry: {}", e);
+                    continue;
+                },
+            };
             let path = entry.path();
 
             if path.extension() != Some("mp3".as_ref()) {
                 continue;
             }
 
-            let filename = path.strip_prefix(&filter.root_dir).unwrap();
+            let filename = match path.strip_prefix(&filter.root_dir) {
+                Ok(filename) => filename,
+                Err(_) => {
+                    eprintln!(
+                        "[Warning] Path '{}' is not inside our root dir: '{}'",
+                        path.display(),
+                        filter.root_dir,
+                    );
+                    continue;
+                },
+            };
+
             if filter.query.trim() != "" &&
                 !filename.to_string_lossy().to_lowercase().contains(&filter.query.to_lowercase()) {
                     continue;
@@ -58,11 +75,13 @@ pub fn spawn_worker(
 
         while let Ok(filter) = filter_receiver.recv() {
             music_list.loading = true;
+            // Unwrap: If sender is closed, there's nothing we can do
             list_sender.send(music_list.clone()).unwrap();
 
             music_list.update(&filter);
 
             music_list.loading = false;
+            // Unwrap: If sender is closed, there's nothing we can do
             list_sender.send(music_list.clone()).unwrap();
         }
     })

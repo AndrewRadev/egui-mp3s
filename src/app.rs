@@ -23,7 +23,7 @@ impl Default for Mp3sApp {
     fn default() -> Self {
         let root_dir = ::dirs::audio_dir().
             or_else(|| ::dirs::home_dir()).
-            unwrap_or_else(|| ::std::env::current_dir().unwrap());
+            unwrap_or_else(|| ::std::env::current_dir().unwrap_or_default());
         let root_dir = format!("{}", root_dir.display());
 
         let filter = MusicFilter { root_dir, query: String::new() };
