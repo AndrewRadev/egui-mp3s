@@ -20,7 +20,7 @@ pub struct MusicList {
 }
 
 impl MusicList {
-    fn update(&mut self, filter: &MusicFilter) {
+    pub fn update(&mut self, filter: &MusicFilter) {
         let dir_entries = match std::fs::read_dir(&filter.root_dir) {
             Ok(dir_entries) => dir_entries,
             _ => return,
