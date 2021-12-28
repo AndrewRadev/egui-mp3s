@@ -133,7 +133,11 @@ impl epi::App for Mp3sApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("List of mp3s");
+            if self.list.loading {
+                ui.heading("List of mp3s 🔁");
+            } else {
+                ui.heading("List of mp3s");
+            }
 
             ui.label("Filter: ");
             if ui.text_edit_singleline(&mut self.filter.query).changed() {
