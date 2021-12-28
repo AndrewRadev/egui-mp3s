@@ -104,8 +104,6 @@ impl epi::App for Mp3sApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("Side Panel");
-
             ui.horizontal(|ui| {
                 ui.label("Music directory: ");
                 if ui.text_edit_singleline(&mut self.filter.root_dir).changed() {
