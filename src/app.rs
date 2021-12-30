@@ -59,7 +59,7 @@ impl epi::App for Mp3sApp {
     fn setup(
         &mut self,
         _ctx: &egui::CtxRef,
-        _frame: &mut epi::Frame<'_>,
+        _frame: &epi::Frame,
         _storage: Option<&dyn epi::Storage>,
     ) {
         #[cfg(feature = "persistence")]
@@ -81,7 +81,7 @@ impl epi::App for Mp3sApp {
         epi::set_value(storage, epi::APP_KEY, self);
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
         if let Some(receiver) = &self.list_receiver {
             if let Ok(new_music_list) = receiver.try_recv() {
                 self.list = new_music_list;
@@ -91,7 +91,7 @@ impl epi::App for Mp3sApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
+                ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
                         frame.quit();
                     }

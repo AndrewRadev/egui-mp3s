@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = "0.15.0" # Gives us egui, epi and web+native backends
+eframe = "0.16.0" # Gives us egui, epi and web+native backends
 serde = { version = "1", features = ["derive"], optional = true }
 dirs = "4.0"
 id3 = "0.6.6"
