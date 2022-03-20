@@ -9,6 +9,14 @@ use image::GenericImageView;
 
 use crate::music::{MusicFilter, MusicList};
 
+pub enum WorkerEvent {
+    UpdateFilter(MusicFilter)
+}
+
+pub enum UiEvent {
+    UpdateList(MusicList),
+}
+
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))]
 pub struct Mp3sApp {
@@ -19,9 +27,9 @@ pub struct Mp3sApp {
     selected_texture: Option<TextureId>,
 
     #[cfg_attr(feature = "persistence", serde(skip))]
-    filter_sender: Option<Sender<MusicFilter>>,
+    worker_sender: Option<Sender<WorkerEvent>>,
     #[cfg_attr(feature = "persistence", serde(skip))]
-    list_receiver: Option<Receiver<MusicList>>,
+    ui_receiver: Option<Receiver<UiEvent>>,
 }
 
 impl Default for Mp3sApp {
@@ -37,23 +45,24 @@ impl Default for Mp3sApp {
         Self {
             filter, list,
             selected_path: None::<PathBuf>,
-            filter_sender: None, list_receiver: None,
             selected_texture: None::<TextureId>,
+            worker_sender: None, ui_receiver: None,
         }
     }
 }
 
 impl Mp3sApp {
-    pub fn new(sender: Sender<MusicFilter>, receiver: Receiver<MusicList>) -> Self {
+    pub fn new(sender: Sender<WorkerEvent>, receiver: Receiver<UiEvent>) -> Self {
         Self {
-            filter_sender: Some(sender),
-            list_receiver: Some(receiver),
+            worker_sender: Some(sender),
+            ui_receiver: Some(receiver),
             .. Self::default()
         }
     }
 
     pub fn refresh_filter(&self) {
-        self.filter_sender.as_ref().map(|s| s.send(self.filter.clone()));
+        self.worker_sender.as_ref().
+            map(|s| s.send(WorkerEvent::UpdateFilter(self.filter.clone())));
     }
 }
 
@@ -70,13 +79,13 @@ impl epi::App for Mp3sApp {
     ) {
         #[cfg(feature = "persistence")]
         if let Some(storage) = _storage {
-            let filter_sender = self.filter_sender.take();
-            let list_receiver = self.list_receiver.take();
+            let worker_sender = self.worker_sender.take();
+            let ui_receiver = self.ui_receiver.take();
 
             *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default();
 
-            self.filter_sender = filter_sender;
-            self.list_receiver = list_receiver;
+            self.worker_sender = worker_sender;
+            self.ui_receiver = ui_receiver;
         }
 
         self.refresh_filter();
@@ -88,9 +97,11 @@ impl epi::App for Mp3sApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
-        if let Some(receiver) = &self.list_receiver {
-            if let Ok(new_music_list) = receiver.try_recv() {
-                self.list = new_music_list;
+        if let Some(receiver) = &self.ui_receiver {
+            if let Ok(ui_event) = receiver.try_recv() {
+                match ui_event {
+                    UiEvent::UpdateList(new_music_list) => self.list = new_music_list,
+                }
             }
         }
 

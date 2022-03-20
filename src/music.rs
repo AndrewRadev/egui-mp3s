@@ -4,6 +4,8 @@ use std::thread;
 
 use walkdir::WalkDir;
 
+use crate::app::{WorkerEvent, UiEvent};
+
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))]
 #[derive(Clone, Default)]
@@ -69,22 +71,26 @@ impl MusicList {
 }
 
 pub fn spawn_worker(
-    filter_receiver: Receiver<MusicFilter>,
-    list_sender: Sender<MusicList>
+    worker_receiver: Receiver<WorkerEvent>,
+    ui_sender: Sender<UiEvent>
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut music_list = MusicList::default();
 
-        while let Ok(filter) = filter_receiver.recv() {
-            music_list.loading = true;
-            // Unwrap: If sender is closed, there's nothing we can do
-            list_sender.send(music_list.clone()).unwrap();
+        while let Ok(worker_event) = worker_receiver.recv() {
+            match worker_event {
+                WorkerEvent::UpdateFilter(filter) => {
+                    music_list.loading = true;
+                    // Unwrap: If sender is closed, there's nothing we can do
+                    ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
 
-            music_list.update(&filter);
+                    music_list.update(&filter);
 
-            music_list.loading = false;
-            // Unwrap: If sender is closed, there's nothing we can do
-            list_sender.send(music_list.clone()).unwrap();
+                    music_list.loading = false;
+                    // Unwrap: If sender is closed, there's nothing we can do
+                    ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
+                }
+            }
         }
     })
 }
