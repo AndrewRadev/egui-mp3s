@@ -15,6 +15,7 @@ pub enum WorkerEvent {
 
 pub enum UiEvent {
     UpdateList(MusicList),
+    SetLoading(bool),
 }
 
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
@@ -22,6 +23,7 @@ pub enum UiEvent {
 pub struct Mp3sApp {
     filter: MusicFilter,
     list: MusicList,
+    loading: bool,
 
     selected_path: Option<PathBuf>,
     selected_texture: Option<TextureId>,
@@ -40,10 +42,11 @@ impl Default for Mp3sApp {
         let root_dir = format!("{}", root_dir.display());
 
         let filter = MusicFilter { root_dir, query: String::new() };
-        let list = MusicList { loading: true, songs: Vec::new() };
+        let list = MusicList { songs: Vec::new() };
 
         Self {
             filter, list,
+            loading: false,
             selected_path: None::<PathBuf>,
             selected_texture: None::<TextureId>,
             worker_sender: None, ui_receiver: None,
@@ -98,9 +101,10 @@ impl epi::App for Mp3sApp {
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
         if let Some(receiver) = &self.ui_receiver {
-            if let Ok(ui_event) = receiver.try_recv() {
+            while let Ok(ui_event) = receiver.try_recv() {
                 match ui_event {
                     UiEvent::UpdateList(new_music_list) => self.list = new_music_list,
+                    UiEvent::SetLoading(loading) => self.loading = loading,
                 }
             }
         }
@@ -168,7 +172,7 @@ impl epi::App for Mp3sApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.list.loading {
+            if self.loading {
                 ui.heading("List of mp3s 🔁");
             } else {
                 ui.heading("List of mp3s");

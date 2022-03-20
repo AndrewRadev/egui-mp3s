@@ -19,7 +19,6 @@ pub struct MusicFilter {
 #[cfg_attr(feature = "persistence", serde(default))]
 #[derive(Clone, Default)]
 pub struct MusicList {
-    pub loading: bool,
     pub songs: Vec<PathBuf>,
 }
 
@@ -80,14 +79,13 @@ pub fn spawn_worker(
         while let Ok(worker_event) = worker_receiver.recv() {
             match worker_event {
                 WorkerEvent::UpdateFilter(filter) => {
-                    music_list.loading = true;
                     // Unwrap: If sender is closed, there's nothing we can do
+                    ui_sender.send(UiEvent::SetLoading(true)).unwrap();
                     ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
 
                     music_list.update(&filter);
 
-                    music_list.loading = false;
-                    // Unwrap: If sender is closed, there's nothing we can do
+                    ui_sender.send(UiEvent::SetLoading(false)).unwrap();
                     ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
                 }
             }
