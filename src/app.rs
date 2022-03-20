@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
+use std::ops::Deref;
 
 use eframe::{egui, epi};
+use eframe::epi::TextureAllocator;
+use eframe::egui::TextureId;
+use image::GenericImageView;
 
 use crate::music::{MusicFilter, MusicList};
 
@@ -12,6 +16,7 @@ pub struct Mp3sApp {
     list: MusicList,
 
     selected_path: Option<PathBuf>,
+    selected_texture: Option<TextureId>,
 
     #[cfg_attr(feature = "persistence", serde(skip))]
     filter_sender: Option<Sender<MusicFilter>>,
@@ -33,6 +38,7 @@ impl Default for Mp3sApp {
             filter, list,
             selected_path: None::<PathBuf>,
             filter_sender: None, list_receiver: None,
+            selected_texture: None::<TextureId>,
         }
     }
 }
@@ -126,7 +132,27 @@ impl epi::App for Mp3sApp {
                     if let Some(album) = tag.album() {
                         ui.label(format!("Album: {}", album));
                     }
+
+                    // Note: Slow, should happen in the background maybe
+                    if self.selected_texture.is_none() {
+                        if let Some(image_tag) = tag.pictures().next() {
+                            if let Ok(image) = ::image::load_from_memory(&image_tag.data) {
+                                let dimensions = image.dimensions();
+
+                                let egui_image = epi::Image::from_rgba_unmultiplied(
+                                    [dimensions.0 as usize, dimensions.1 as usize],
+                                    image.to_rgba8().deref(),
+                                );
+
+                                self.selected_texture = Some(frame.alloc(egui_image));
+                            }
+                        }
+                    }
                 }
+            }
+
+            if let Some(texture_id) = self.selected_texture {
+                ui.image(texture_id, egui::Vec2 { x: 200.0, y: 200.0 });
             }
         });
 
@@ -147,6 +173,8 @@ impl epi::App for Mp3sApp {
                     let selected = Some(filename) == self.selected_path.as_ref();
 
                     if ui.selectable_label(selected, format!("{}", filename.display())).clicked() {
+                        self.selected_texture.take().map(|t| frame.free(t));
+
                         if selected {
                             self.selected_path = None;
                         } else {
