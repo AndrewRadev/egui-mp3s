@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
 use std::ops::Deref;
+use std::time::Instant;
 
 use eframe::{egui, epi};
 use eframe::epi::TextureAllocator;
 use eframe::egui::TextureId;
 use image::GenericImageView;
+use log::debug;
 
 use crate::music::{MusicFilter, MusicList};
 
@@ -100,6 +102,8 @@ impl epi::App for Mp3sApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
+        let start_time = Instant::now();
+
         if let Some(receiver) = &self.ui_receiver {
             while let Ok(ui_event) = receiver.try_recv() {
                 match ui_event {
@@ -203,5 +207,7 @@ impl epi::App for Mp3sApp {
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
         });
+
+        debug!("Update took: {}ms", start_time.elapsed().as_millis());
     }
 }

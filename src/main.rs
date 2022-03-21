@@ -4,6 +4,8 @@ use egui_mp3s::app::Mp3sApp;
 use egui_mp3s::music::spawn_worker;
 
 fn main() {
+    ::env_logger::init();
+
     let native_options = eframe::NativeOptions::default();
 
     let (worker_sender, worker_receiver) = mpsc::channel();
