@@ -10,6 +10,7 @@ use image::GenericImageView;
 use log::debug;
 
 use crate::music::{MusicFilter, MusicList};
+use crate::player::Player;
 
 pub enum WorkerEvent {
     UpdateFilter(MusicFilter)
@@ -25,6 +26,7 @@ pub enum UiEvent {
 pub struct Mp3sApp {
     filter: MusicFilter,
     list: MusicList,
+    player: Player,
     loading: bool,
 
     selected_path: Option<PathBuf>,
@@ -45,9 +47,10 @@ impl Default for Mp3sApp {
 
         let filter = MusicFilter { root_dir, query: String::new() };
         let list = MusicList { songs: Vec::new() };
+        let player = Player::default();
 
         Self {
-            filter, list,
+            filter, list, player,
             loading: false,
             selected_path: None::<PathBuf>,
             selected_texture: None::<TextureId>,
@@ -167,6 +170,16 @@ impl epi::App for Mp3sApp {
                             }
                         }
                     }
+                }
+            }
+
+            if self.player.is_playing() {
+                if ui.button("Pause").clicked() {
+                    self.player.pause();
+                }
+            } else if let Some(path) = &self.selected_path {
+                if ui.button("Play").clicked() {
+                    self.player.play(&PathBuf::from(&self.filter.root_dir).join(path));
                 }
             }
 
