@@ -8,6 +8,7 @@ use eframe::epi::TextureAllocator;
 use eframe::egui::TextureId;
 use image::GenericImageView;
 use log::debug;
+use id3::TagLike;
 
 use crate::music::{MusicFilter, MusicList};
 use crate::player::Player;
@@ -159,6 +160,7 @@ impl epi::App for Mp3sApp {
                     if self.selected_texture.is_none() {
                         if let Some(image_tag) = tag.pictures().next() {
                             if let Ok(image) = ::image::load_from_memory(&image_tag.data) {
+                                let image = image.thumbnail(300, 300);
                                 let dimensions = image.dimensions();
 
                                 let egui_image = epi::Image::from_rgba_unmultiplied(
