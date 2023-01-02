@@ -15,7 +15,15 @@ fn main() {
 
     eframe::run_native("Basic Mp3 Viewer", native_options, Box::new(move |creation_context| {
         creation_context.egui_ctx.set_visuals(egui::Visuals::light());
+        let mut app = Mp3sApp::new(worker_sender, ui_receiver);
 
-        Box::new(Mp3sApp::new(worker_sender, ui_receiver))
+        #[cfg(feature = "persistence")]
+        if let Some(storage) = creation_context.storage {
+            app.load_storage(storage);
+        }
+
+        app.refresh_filter();
+
+        Box::new(app)
     }));
 }

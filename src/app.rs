@@ -25,11 +25,13 @@ pub enum UiEvent {
 pub struct Mp3sApp {
     filter: MusicFilter,
     list: MusicList,
-    player: Player,
     loading: bool,
 
     selected_path: Option<PathBuf>,
     selected_texture: Option<TextureId>,
+
+    #[cfg_attr(feature = "persistence", serde(skip))]
+    player: Option<Player>,
 
     #[cfg_attr(feature = "persistence", serde(skip))]
     worker_sender: Option<Sender<WorkerEvent>>,
@@ -46,7 +48,7 @@ impl Default for Mp3sApp {
 
         let filter = MusicFilter { root_dir, query: String::new() };
         let list = MusicList { songs: Vec::new() };
-        let player = Player::default();
+        let player = Some(Player::default());
 
         Self {
             filter, list, player,
@@ -67,6 +69,18 @@ impl Mp3sApp {
         }
     }
 
+    pub fn load_storage(&mut self, storage: &dyn eframe::Storage) {
+        let worker_sender = self.worker_sender.take();
+        let ui_receiver = self.ui_receiver.take();
+        let player = self.player.take();
+
+        *self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+
+        self.worker_sender = worker_sender;
+        self.ui_receiver = ui_receiver;
+        self.player = player;
+    }
+
     pub fn refresh_filter(&self) {
         self.worker_sender.as_ref().
             map(|s| s.send(WorkerEvent::UpdateFilter(self.filter.clone())));
@@ -74,29 +88,9 @@ impl Mp3sApp {
 }
 
 impl eframe::App for Mp3sApp {
-    // fn setup(
-    //     &mut self,
-    //     _ctx: &egui::Context,
-    //     _frame: &eframe::Frame,
-    //     _storage: Option<&dyn epi::Storage>,
-    // ) {
-    //     #[cfg(feature = "persistence")]
-    //     if let Some(storage) = _storage {
-    //         let worker_sender = self.worker_sender.take();
-    //         let ui_receiver = self.ui_receiver.take();
-    //
-    //         *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default();
-    //
-    //         self.worker_sender = worker_sender;
-    //         self.ui_receiver = ui_receiver;
-    //     }
-    //
-    //     self.refresh_filter();
-    // }
-
     #[cfg(feature = "persistence")]
-    fn save(&mut self, storage: &mut dyn epi::Storage) {
-        epi::set_value(storage, epi::APP_KEY, self);
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -174,13 +168,15 @@ impl eframe::App for Mp3sApp {
                 }
             }
 
-            if self.player.is_playing() {
-                if ui.button("Pause").clicked() {
-                    self.player.pause();
-                }
-            } else if let Some(path) = &self.selected_path {
-                if ui.button("Play").clicked() {
-                    self.player.play(&PathBuf::from(&self.filter.root_dir).join(path));
+            if let Some(player) = &mut self.player {
+                if player.is_playing() {
+                    if ui.button("Pause").clicked() {
+                        player.pause();
+                    }
+                } else if let Some(path) = &self.selected_path {
+                    if ui.button("Play").clicked() {
+                        player.play(&PathBuf::from(&self.filter.root_dir).join(path));
+                    }
                 }
             }
 
