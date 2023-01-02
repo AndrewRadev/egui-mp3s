@@ -3,9 +3,7 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::ops::Deref;
 use std::time::Instant;
 
-use eframe::{egui, epi};
-use eframe::epi::TextureAllocator;
-use eframe::egui::TextureId;
+use egui::{self, TextureId};
 use image::GenericImageView;
 use log::debug;
 use id3::TagLike;
@@ -75,37 +73,33 @@ impl Mp3sApp {
     }
 }
 
-impl epi::App for Mp3sApp {
-    fn name(&self) -> &str {
-        "Basic Mp3 Viewer"
-    }
-
-    fn setup(
-        &mut self,
-        _ctx: &egui::CtxRef,
-        _frame: &epi::Frame,
-        _storage: Option<&dyn epi::Storage>,
-    ) {
-        #[cfg(feature = "persistence")]
-        if let Some(storage) = _storage {
-            let worker_sender = self.worker_sender.take();
-            let ui_receiver = self.ui_receiver.take();
-
-            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default();
-
-            self.worker_sender = worker_sender;
-            self.ui_receiver = ui_receiver;
-        }
-
-        self.refresh_filter();
-    }
+impl eframe::App for Mp3sApp {
+    // fn setup(
+    //     &mut self,
+    //     _ctx: &egui::Context,
+    //     _frame: &eframe::Frame,
+    //     _storage: Option<&dyn epi::Storage>,
+    // ) {
+    //     #[cfg(feature = "persistence")]
+    //     if let Some(storage) = _storage {
+    //         let worker_sender = self.worker_sender.take();
+    //         let ui_receiver = self.ui_receiver.take();
+    //
+    //         *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default();
+    //
+    //         self.worker_sender = worker_sender;
+    //         self.ui_receiver = ui_receiver;
+    //     }
+    //
+    //     self.refresh_filter();
+    // }
 
     #[cfg(feature = "persistence")]
     fn save(&mut self, storage: &mut dyn epi::Storage) {
         epi::set_value(storage, epi::APP_KEY, self);
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let start_time = Instant::now();
 
         if let Some(receiver) = &self.ui_receiver {
@@ -122,7 +116,7 @@ impl epi::App for Mp3sApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
-                        frame.quit();
+                        frame.close();
                     }
 
                     if ui.button("Refresh").clicked() {
@@ -163,12 +157,17 @@ impl epi::App for Mp3sApp {
                                 let image = image.thumbnail(300, 300);
                                 let dimensions = image.dimensions();
 
-                                let egui_image = epi::Image::from_rgba_unmultiplied(
+                                let egui_image = egui::ColorImage::from_rgba_unmultiplied(
                                     [dimensions.0 as usize, dimensions.1 as usize],
                                     image.to_rgba8().deref(),
                                 );
 
-                                self.selected_texture = Some(frame.alloc(egui_image));
+                                // TODO: This needs to be run only once:
+                                // HashMap<PathBuf, TextureHandle>
+                                let label = format!("{}", path.display());
+                                let handle = ctx.load_texture(label, egui_image, egui::TextureOptions::default());
+
+                                self.selected_texture = Some(handle.id());
                             }
                         }
                     }
@@ -207,7 +206,7 @@ impl epi::App for Mp3sApp {
                     let selected = Some(filename) == self.selected_path.as_ref();
 
                     if ui.selectable_label(selected, format!("{}", filename.display())).clicked() {
-                        self.selected_texture.take().map(|t| frame.free(t));
+                        self.selected_texture.take();
 
                         if selected {
                             self.selected_path = None;

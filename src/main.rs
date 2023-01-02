@@ -11,8 +11,11 @@ fn main() {
     let (worker_sender, worker_receiver) = mpsc::channel();
     let (ui_sender,     ui_receiver)     = mpsc::channel();
 
-    let app = Mp3sApp::new(worker_sender, ui_receiver);
     spawn_worker(worker_receiver, ui_sender);
 
-    eframe::run_native(Box::new(app), native_options);
+    eframe::run_native("Basic Mp3 Viewer", native_options, Box::new(move |creation_context| {
+        creation_context.egui_ctx.set_visuals(egui::Visuals::light());
+
+        Box::new(Mp3sApp::new(worker_sender, ui_receiver))
+    }));
 }
