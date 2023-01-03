@@ -69,6 +69,7 @@ impl Mp3sApp {
         }
     }
 
+    #[cfg(feature = "persistence")]
     pub fn load_storage(&mut self, storage: &dyn eframe::Storage) {
         let worker_sender = self.worker_sender.take();
         let ui_receiver = self.ui_receiver.take();

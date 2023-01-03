@@ -15,6 +15,8 @@ fn main() {
 
     eframe::run_native("Basic Mp3 Viewer", native_options, Box::new(move |creation_context| {
         creation_context.egui_ctx.set_visuals(egui::Visuals::light());
+
+        #[allow(unused_mut)]
         let mut app = Mp3sApp::new(worker_sender, ui_receiver);
 
         #[cfg(feature = "persistence")]
