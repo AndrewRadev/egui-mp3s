@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
-use std::ops::Deref;
 use std::time::Instant;
 
 use egui::{self, TextureId};
-use image::GenericImageView;
 use log::debug;
 use id3::TagLike;
 
@@ -12,7 +10,8 @@ use crate::music::{MusicFilter, MusicList};
 use crate::player::Player;
 
 pub enum WorkerEvent {
-    UpdateFilter(MusicFilter)
+    UpdateFilter(MusicFilter),
+    LoadSongImage(PathBuf, id3::Tag),
 }
 
 pub enum UiEvent {
@@ -47,7 +46,7 @@ impl Default for Mp3sApp {
         let root_dir = format!("{}", root_dir.display());
 
         let filter = MusicFilter { root_dir, query: String::new() };
-        let list = MusicList { songs: Vec::new() };
+        let list = MusicList::default();
         let player = Some(Player::default());
 
         Self {
@@ -145,25 +144,12 @@ impl eframe::App for Mp3sApp {
                         ui.label(format!("Album: {}", album));
                     }
 
-                    // Note: Slow, should happen in the background maybe
                     if self.selected_texture.is_none() {
-                        if let Some(image_tag) = tag.pictures().next() {
-                            if let Ok(image) = ::image::load_from_memory(&image_tag.data) {
-                                let image = image.thumbnail(300, 300);
-                                let dimensions = image.dimensions();
-
-                                let egui_image = egui::ColorImage::from_rgba_unmultiplied(
-                                    [dimensions.0 as usize, dimensions.1 as usize],
-                                    image.to_rgba8().deref(),
-                                );
-
-                                // TODO: This needs to be run only once:
-                                // HashMap<PathBuf, TextureHandle>
-                                let label = format!("{}", path.display());
-                                let handle = ctx.load_texture(label, egui_image, egui::TextureOptions::default());
-
-                                self.selected_texture = Some(handle.id());
-                            }
+                        if let Some(song_image) = self.list.song_images.get(path) {
+                            self.selected_texture = song_image.texture_id;
+                        } else {
+                            self.worker_sender.as_ref().
+                                map(|s| s.send(WorkerEvent::LoadSongImage(path.clone(), tag)));
                         }
                     }
                 }
