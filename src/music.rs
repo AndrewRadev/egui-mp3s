@@ -1,18 +1,19 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
+use std::sync::{Arc};
 use std::thread;
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use walkdir::WalkDir;
-use egui::TextureId;
-use image::GenericImageView;
+use egui::mutex::Mutex;
+use egui_extras::RetainedImage;
+use log::info;
 
 use crate::app::{WorkerEvent, UiEvent};
 
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))]
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct MusicFilter {
     /// Root dir is not a `PathBuf` so we can easily plug it into egui's text input
     pub root_dir: String,
@@ -24,13 +25,23 @@ pub struct MusicFilter {
 #[derive(Clone, Default)]
 pub struct MusicList {
     pub songs: Vec<PathBuf>,
-    #[cfg_attr(feature = "persistence", serde(skip))]
-    pub song_images: HashMap<PathBuf, SongImage>,
 }
 
-#[derive(Clone, Default)]
-pub struct SongImage {
-    pub texture_id: Option<TextureId>,
+pub enum ImageData {
+    Loading,
+    Missing,
+    Ready(RetainedImage),
+}
+
+#[derive(Clone)]
+pub struct MusicImages {
+    pub data: Arc<Mutex<HashMap<PathBuf, ImageData>>>,
+}
+
+impl MusicImages {
+    pub fn new() -> Self {
+        MusicImages { data: Arc::new(Mutex::new(HashMap::new())) }
+    }
 }
 
 impl MusicList {
@@ -81,7 +92,6 @@ impl MusicList {
 }
 
 pub fn spawn_worker(
-    context: egui::Context,
     worker_receiver: Receiver<WorkerEvent>,
     ui_sender: Sender<UiEvent>
 ) -> thread::JoinHandle<()> {
@@ -91,7 +101,8 @@ pub fn spawn_worker(
         while let Ok(worker_event) = worker_receiver.recv() {
             match worker_event {
                 WorkerEvent::UpdateFilter(filter) => {
-                    // Unwrap: If sender is closed, there's nothing we can do
+                    info!("WorkerEvent::UpdateFilter {:?}", filter);
+
                     ui_sender.send(UiEvent::SetLoading(true)).unwrap();
                     ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
 
@@ -101,37 +112,22 @@ pub fn spawn_worker(
                     ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
                 },
 
-                WorkerEvent::LoadSongImage(path, tag) => {
-                    if music_list.song_images.contains_key(&path) {
-                        return;
-                    }
+                WorkerEvent::LoadMusicImage(images, path, tag) => {
+                    info!("WorkerEvent::LoadMusicImage {:?}", path);
 
-                    let mut music_list = music_list.clone();
-                    music_list.song_images.insert(path.clone(), SongImage { texture_id: None });
-
-                    // Unwrap: If sender is closed, there's nothing we can do
                     ui_sender.send(UiEvent::SetLoading(true)).unwrap();
-                    ui_sender.send(UiEvent::UpdateList(music_list.clone())).unwrap();
 
                     if let Some(image_tag) = tag.pictures().next() {
-                        if let Ok(image) = ::image::load_from_memory(&image_tag.data) {
-                            let image = image.thumbnail(300, 300);
-                            let dimensions = image.dimensions();
+                        let label = format!("{}", path.display());
 
-                            let egui_image = egui::ColorImage::from_rgba_unmultiplied(
-                                [dimensions.0 as usize, dimensions.1 as usize],
-                                image.to_rgba8().deref(),
-                            );
-
-                            let label = format!("{}", path.display());
-                            let handle = context.load_texture(label, egui_image, egui::TextureOptions::default());
-
-                            music_list.song_images.get_mut(&path).unwrap().texture_id = Some(handle.id());
+                        if let Ok(image) = RetainedImage::from_image_bytes(label, &image_tag.data) {
+                            images.data.lock().insert(path.clone(), ImageData::Ready(image));
                         }
+                    } else {
+                        images.data.lock().insert(path.clone(), ImageData::Missing);
                     }
 
                     ui_sender.send(UiEvent::SetLoading(false)).unwrap();
-                    ui_sender.send(UiEvent::UpdateList(music_list)).unwrap();
                 },
             }
         }

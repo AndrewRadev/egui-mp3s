@@ -13,7 +13,7 @@ fn main() {
 
     eframe::run_native("Basic Mp3 Viewer", native_options, Box::new(move |creation_context| {
         creation_context.egui_ctx.set_visuals(egui::Visuals::light());
-        spawn_worker(creation_context.egui_ctx.clone(), worker_receiver, ui_sender);
+        spawn_worker(worker_receiver, ui_sender);
 
         #[allow(unused_mut)]
         let mut app = Mp3sApp::new(worker_sender, ui_receiver);

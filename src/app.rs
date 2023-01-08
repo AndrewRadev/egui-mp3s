@@ -2,16 +2,15 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
 use std::time::Instant;
 
-use egui::{self, TextureId};
 use log::debug;
 use id3::TagLike;
 
-use crate::music::{MusicFilter, MusicList};
+use crate::music::{MusicFilter, MusicList, MusicImages, ImageData};
 use crate::player::Player;
 
 pub enum WorkerEvent {
     UpdateFilter(MusicFilter),
-    LoadSongImage(PathBuf, id3::Tag),
+    LoadMusicImage(MusicImages, PathBuf, id3::Tag),
 }
 
 pub enum UiEvent {
@@ -27,7 +26,9 @@ pub struct Mp3sApp {
     loading: bool,
 
     selected_path: Option<PathBuf>,
-    selected_texture: Option<TextureId>,
+
+    #[cfg_attr(feature = "persistence", serde(skip))]
+    music_images: Option<MusicImages>,
 
     #[cfg_attr(feature = "persistence", serde(skip))]
     player: Option<Player>,
@@ -48,12 +49,12 @@ impl Default for Mp3sApp {
         let filter = MusicFilter { root_dir, query: String::new() };
         let list = MusicList::default();
         let player = Some(Player::default());
+        let music_images = Some(MusicImages::new());
 
         Self {
-            filter, list, player,
+            filter, list, player, music_images,
             loading: false,
             selected_path: None::<PathBuf>,
-            selected_texture: None::<TextureId>,
             worker_sender: None, ui_receiver: None,
         }
     }
@@ -71,14 +72,16 @@ impl Mp3sApp {
     #[cfg(feature = "persistence")]
     pub fn load_storage(&mut self, storage: &dyn eframe::Storage) {
         let worker_sender = self.worker_sender.take();
-        let ui_receiver = self.ui_receiver.take();
-        let player = self.player.take();
+        let ui_receiver   = self.ui_receiver.take();
+        let player        = self.player.take();
+        let music_images  = self.music_images.take();
 
         *self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
 
         self.worker_sender = worker_sender;
-        self.ui_receiver = ui_receiver;
-        self.player = player;
+        self.ui_receiver   = ui_receiver;
+        self.player        = player;
+        self.music_images  = music_images;
     }
 
     pub fn refresh_filter(&self) {
@@ -124,6 +127,7 @@ impl eframe::App for Mp3sApp {
             ui.horizontal(|ui| {
                 ui.label("Music directory: ");
                 if ui.text_edit_singleline(&mut self.filter.root_dir).changed() {
+                    self.selected_path.take();
                     self.refresh_filter();
                 }
             });
@@ -144,12 +148,30 @@ impl eframe::App for Mp3sApp {
                         ui.label(format!("Album: {}", album));
                     }
 
-                    if self.selected_texture.is_none() {
-                        if let Some(song_image) = self.list.song_images.get(path) {
-                            self.selected_texture = song_image.texture_id;
+                    if let Some(images) = &self.music_images {
+                        let mut image_data = images.data.lock();
+
+                        if let Some(entry) = image_data.get(path) {
+                            match entry {
+                                ImageData::Loading => (),
+                                ImageData::Missing => (),
+                                ImageData::Ready(image) => {
+                                    image.show_size(ui, egui::Vec2 { x: 200.0, y: 200.0 });
+                                },
+                            }
                         } else {
+                            image_data.insert(path.clone(), ImageData::Loading);
+                            drop(image_data);
+
                             self.worker_sender.as_ref().
-                                map(|s| s.send(WorkerEvent::LoadSongImage(path.clone(), tag)));
+                                map(|s| {
+                                    let event = WorkerEvent::LoadMusicImage(
+                                        images.clone(),
+                                        path.clone(),
+                                        tag,
+                                    );
+                                    s.send(event)
+                                });
                         }
                     }
                 }
@@ -165,10 +187,6 @@ impl eframe::App for Mp3sApp {
                         player.play(&PathBuf::from(&self.filter.root_dir).join(path));
                     }
                 }
-            }
-
-            if let Some(texture_id) = self.selected_texture {
-                ui.image(texture_id, egui::Vec2 { x: 200.0, y: 200.0 });
             }
         });
 
@@ -189,8 +207,6 @@ impl eframe::App for Mp3sApp {
                     let selected = Some(filename) == self.selected_path.as_ref();
 
                     if ui.selectable_label(selected, format!("{}", filename.display())).clicked() {
-                        self.selected_texture.take();
-
                         if selected {
                             self.selected_path = None;
                         } else {
